@@ -1877,11 +1877,16 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
             dts += delay;
     }
 
-    if (!ts_st->first_timestamp_checked && (pts == AV_NOPTS_VALUE || dts == AV_NOPTS_VALUE)) {
-        av_log(s, AV_LOG_ERROR, "first pts and dts value must be set\n");
+    if (!ts_st->first_timestamp_checked && dts == AV_NOPTS_VALUE) {
+        av_log(s, AV_LOG_ERROR, "first dts value must be set\n");
         return AVERROR_INVALIDDATA;
     }
     ts_st->first_timestamp_checked = 1;
+
+    if (pts == AV_NOPTS_VALUE) {
+        av_log(s, AV_LOG_WARNING, "pts has no value, set to dts=%"PRId64"\n", dts);
+        pts = dts;
+    }
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         const uint8_t *p = buf, *buf_end = p + size;
