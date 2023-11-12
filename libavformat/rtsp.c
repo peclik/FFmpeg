@@ -172,11 +172,15 @@ static void get_word(char *buf, int buf_size, const char **pp)
  *  and end time.
  *  Used for seeking in the rtp stream.
  */
-static void rtsp_parse_range_npt(const char *p, int64_t *start, int64_t *end)
+static void rtsp_parse_range_npt(AVFormatContext *s, const char *p, int64_t *start, int64_t *end)
 {
     char buf[256];
 
     p += strspn(p, SPACE_CHARS);
+
+    av_strlcpy(buf, p, sizeof(buf));
+    av_log(s, AV_LOG_INFO, "RTSP Range: %s\n", buf);
+
     if (!av_stristart(p, "npt=", &p))
         return;
 
@@ -190,7 +194,7 @@ static void rtsp_parse_range_npt(const char *p, int64_t *start, int64_t *end)
         p++;
         get_word_sep(buf, sizeof(buf), "-", &p);
         if (av_parse_time(end, buf, 1) < 0)
-            av_log(NULL, AV_LOG_DEBUG, "Failed to parse interval end specification '%s'\n", buf);
+            av_log(s, AV_LOG_DEBUG, "Failed to parse interval end specification '%s'\n", buf);
     }
 }
 
@@ -624,7 +628,7 @@ static void sdp_parse_line(AVFormatContext *s, SDPParseState *s1,
             int64_t start, end;
 
             // this is so that seeking on a streamed file can work.
-            rtsp_parse_range_npt(p, &start, &end);
+            rtsp_parse_range_npt(s, p, &start, &end);
             s->start_time = start;
             /* AV_NOPTS_VALUE means live broadcast (and can't seek) */
             s->duration   = (end == AV_NOPTS_VALUE) ?
@@ -1109,7 +1113,7 @@ void ff_rtsp_parse_line(AVFormatContext *s,
     } else if (av_stristart(p, "CSeq:", &p)) {
         reply->seq = strtol(p, NULL, 10);
     } else if (av_stristart(p, "Range:", &p)) {
-        rtsp_parse_range_npt(p, &reply->range_start, &reply->range_end);
+        rtsp_parse_range_npt(s, p, &reply->range_start, &reply->range_end);
     } else if (av_stristart(p, "RealChallenge1:", &p)) {
         p += strspn(p, SPACE_CHARS);
         av_strlcpy(reply->real_challenge, p, sizeof(reply->real_challenge));
