@@ -694,6 +694,18 @@ static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestam
                    s->base_timestamp;
 }
 
+static void format_timestamp(char *buf, size_t bufSize, uint64_t timestamp)
+{
+    time_t seconds = timestamp / 1000000000ULL;
+    struct tm *ptm, tmbuf;
+    buf[0] = '\0';
+    ptm = gmtime_r(&seconds, &tmbuf);
+    if (ptm) {
+        strftime(buf, bufSize, "%Y-%m-%dT%H:%M:%S", ptm);
+        av_strlcatf(buf, bufSize, ".%09uZ", (uint32_t)(timestamp % 1000000000ULL));
+    }
+}
+
 static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
                                      const uint8_t *buf, int len)
 {
@@ -747,6 +759,18 @@ static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
     if (ext) {
         if (len < 4)
             return -1;
+
+        if (AV_RB16(buf) == 0xABAC && len >= 16) {
+            static int first_time_reported = 0;
+            // read ONVIF timestamps
+            uint64_t extNTPSec  = AV_RB32(buf + 4) - 2208988800U;
+            uint64_t extNTPUSec = (AV_RB32(buf + 8) * 1000000000ULL)/UINT_MAX;
+            char timeStr[100];
+            format_timestamp(timeStr, sizeof(timeStr), extNTPSec * 1000000000ULL + extNTPUSec);
+            av_log(s->ic, first_time_reported ? AV_LOG_TRACE : AV_LOG_INFO, "RTP: ONVIF NTP time=%s\n", timeStr);
+            first_time_reported = 1;
+        }
+
         /* calculate the header extension length (stored as number
          * of 32-bit words) */
         ext = (AV_RB16(buf + 2) + 1) << 2;
